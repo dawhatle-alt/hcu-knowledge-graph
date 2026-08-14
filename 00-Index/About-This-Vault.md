@@ -26,9 +26,14 @@ Source of truth for AI agents (and humans) interpreting Control-M HCU
 ## Conventions
 - Wikilinks are the graph. Findings link → root causes link → resolutions; checks and
   artifacts link to components and sections.
+- **Product prefixing:** every note carries `product:` frontmatter (EM / Server /
+  Agent). EM note names keep **no prefix** (the vault started EM-only — backward
+  compatibility). Server and Agent notes are name-prefixed `Server-` / `Agent-`
+  (e.g. `Server-LOG_INFO`, `Agent-Artifact-ag_diag_comm`). Index entry points:
+  [[HCU-MOC]] (master) → [[EM-MOC]] · [[Server-MOC]] · [[Agent-MOC]].
 - `status: skeleton` = structure generated deterministically from a real archive,
   enrichment pending. `status: seeded` / `status: enriched` after review.
-- All customer identifiers are sanitized (`<hostname>`, `<n>`, `<ts>`).
+- All customer identifiers are sanitized (`<hostname>`, `<user>`, `<n>`, `<ts>`).
 - Thresholds in check notes are **size-dependent** — never quote a minimum without the
   `production_size` context.
 
