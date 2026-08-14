@@ -18,7 +18,9 @@ enrichment.
 | Component down / won't start | [[EM-Log]] (service + `_exceptions` + `jvm-*` logs) | [[Artifact-hcu-collector-log]], [[OS-Processes]] |
 | Connectivity errors | [[OS-Network]] | [[Thrift]], component log family |
 | DB growth / bloat | [[Artifact-table-size-csvs]] | [[db-postgresql]], [[Artifact-pg_stat_activity]] |
-| Memory / OOM | [[Artifact-java_memory-csv]], [[Check-site_config]] | Service context checks, `jvm-*` GC logs in [[EM-Log]] |
+| Memory / OOM | [[Artifact-java_memory-csv]], [[Check-site_config]] | [[Finding-em-jvm-heap-exhaustion]], service context checks, `jvm-*` GC logs in [[EM-Log]] |
+| Job updates lag / slow download | [[Artifact-metric-csvs]] (GTW) | [[Finding-gtw-update-backlog]], [[Check-system_parameters]], [[Check-defaults_rsc]] |
+| Host under-provisioned | [[Check-machine]], [[OS-Memory]], [[OS-Disk]] | [[Finding-em-host-resource-shortage]] |
 | Kafka / messaging issues | [[EM-KAFKA]] | `apache_kafka_*` health logs in [[EM-Log]] |
 | AI / Jett issues | [[Component-aisrv-web-Jett-AI]] | [[Finding-aisrv-web-connection-refused]] |
 | Upgrade-adjacent symptoms | [[Install]] | Timestamped backups in [[EM-EMWEB]] |

@@ -107,4 +107,7 @@ archives. Built from an EM 9.0.22.100 sample; extend with Server-side samples.
 
 ## Diagnostic chains
 - [[Finding-aisrv-web-connection-refused]] → [[RootCause-missing-lsof-prerequisite]] → [[Resolution-install-lsof-restart-ai]]
+- [[Finding-em-jvm-heap-exhaustion]] → _(root cause pending)_
+- [[Finding-gtw-update-backlog]] → _(root cause pending)_
+- [[Finding-em-host-resource-shortage]] → _(root cause pending)_
 - _(enrichment pending — add chains as cases are worked)_
