@@ -31,8 +31,39 @@ tags:
 
 ## What it validates
 
-_(enrichment pending)_
+JVM heap sizing for the core EM server components, read from the `jvm_properties`
+section of [[Artifact-EMSiteConfig-ini]]:
+
+- `HeapGSR` / `HeapCMS` / `HeapGTW` — maximum Java heap (MB) for the
+  [[Component-GUI-Server-GSR]], [[Component-Configuration-Server-CMS]] and
+  [[Component-Gateway-GTW]] processes. Undersized heaps on these three are the
+  most common self-inflicted cause of EM sluggishness: the JVM spends its time
+  in garbage collection instead of serving requests.
+- `HeapUTIL` — maximum heap for EM utility processes (e.g. batch utilities run
+  under EM Util). Utilities that walk large job/definition sets need this
+  headroom even when the always-on servers are healthy.
+- `AutoIncHeapTimes` / `AutoIncHeapSize` — the automatic heap-increase
+  mechanism: how many times a component's heap may be auto-increased, and by
+  how many MB each step. > [UNVERIFIED — confirm against docs] the increase is
+  applied when EM restarts a component after it exhausts its configured heap.
+
+The minimums check_config applies here **scale with `production_size`** — the
+values in the table above are the Medium-size thresholds from the sample
+archive (110,198 jobs / 15 users). A Large environment is held to higher
+minimums; never quote these numbers without stating the size they belong to
+(read `production_size` from [[Artifact-check_config_report-json]] first).
 
 ## When it fails
 
-_(enrichment pending — link findings here)_
+A failed `site_config` check means one or more components are running with less
+heap than check_config expects for the environment's size. Concrete symptoms
+to look for in the same archive:
+
+- Heap usage at or near the configured maximum in
+  [[Artifact-java_memory-csv]] for the flagged component.
+- GC-heavy behavior or `OutOfMemoryError` entries in that component's
+  `jvm-*` / `_exceptions` logs in [[EM-Log]], often with component restarts.
+- Client-visible sluggishness routed through the "Memory / OOM" row of
+  [[Diagnostic-Playbooks-MOC]].
+
+Symptoms → [[Finding-em-jvm-heap-exhaustion]]
