@@ -441,8 +441,352 @@ ARTIFACTS = {
 # ("Server-LOG_INFO", "Agent-Artifact-ag_diag_comm", ...) — the `prefix` entry
 # is applied only to generated names (Check-* notes and the <Product>-MOC).
 
-SERVER_SECTION_INFO, SERVER_COMPONENTS, SERVER_ARTIFACTS = {}, {}, {}
-AGENT_SECTION_INFO, AGENT_COMPONENTS, AGENT_ARTIFACTS = {}, {}, {}
+SERVER_SECTION_INFO = {
+    "": ("Server-Archive-Root",
+         "Top level of a Control-M/Server `ctm_data_collector` archive: "
+         "`ctm_data_collector_<YYYYMMDD>_<HHMMSS>_<OS>_<hostname>_<user>`. "
+         "Sample baseline: Server 9.0.21.300 on Linux, **Oracle**-backed. This sample "
+         "contains **no check_config results** — pass/fail health checks are not "
+         "available for Server until a sample that ran them is added."),
+    "CNF_INFO": ("Server-CNF_INFO",
+        "Core Control-M/Server configuration captures: `data/*.dat` snapshots "
+        "(`config.dat`, `local_config.dat`, `parammap.dat`, `env_details.dat`, "
+        "`OAP.dat`, `SAP.dat`, `TimeZone.dat`, `rt_ip_address.dat`, `shAdress.dat`, "
+        "`ajf_show_net.dat`, `DBUMonitor.dat`, ...) plus `FileList*.txt` inventories."),
+    "CNF_INFO/SSL": ("Server-CNF_INFO-SSL",
+        "SSL policy/certificate captures (`cert/*.plc`) for server↔agent and related "
+        "channels."),
+    "CNF_INFO/REMEDY": ("Server-CNF_INFO-REMEDY",
+        "Remedy integration configuration (`RemedyConf.xml`, configure script, schema)."),
+    "CNF_INFO/versions": ("Server-CNF_INFO-versions",
+        "`installed-versions.txt` — full PIM install/upgrade history (package, platform, "
+        "dates, version, type). Primary source for [[Server-Artifact-installed-versions]]."),
+    "CNF_INFO/tmp_dir": ("Server-CNF_INFO-tmp_dir",
+        "Working/diagnostic files: log4j scanner output, `ctmcheckdb.<n>`, `CS_dbglvl.txt`, "
+        "`C_time_stamps.txt`, `NS_*.txt` working captures."),
+    "LOG_INFO": ("Server-LOG_INFO",
+        "Control-M/Server log root — the subsections below hold process logs, services "
+        "logs/configs, embedded Kafka, and job status files."),
+    "LOG_INFO/proclog": ("Server-LOG_INFO-proclog",
+        "Process logs (`proclog`). Families by prefix: `CE.*` (engine, incl. periodic "
+        "pstack snapshots), `TR*` (tracker), `CS<pid>*`, `CA.*` (Configuration Agent, "
+        "with per-thread `_CO_`/`_CSE_`/`_CSU_`/`_DBC_`/`_EX_` logs), `RT*`, `WD*`, "
+        "`U_SQL*`, `CTMIPC*`, plus `agents_availability_*`. **Note:** the rotated "
+        "`LOG_INFO/proclog.save/` copies are covered by this note too (deliberate "
+        "deviation from one-note-per-directory)."),
+    "LOG_INFO/log": ("Server-LOG_INFO-log",
+        "Services operation logs (`log/services/`): `apache_kafka_*` / "
+        "`apache_zookeeper_*` health, start, stop logs, and `commands.log`."),
+    "LOG_INFO/services": ("Server-LOG_INFO-services",
+        "ctms microservices configuration: `ctms-*-application.yml` per service, "
+        "gateway properties, and `config/custom/` user overrides "
+        "(`BootPropertiesUserOverride.yml`) which win over shipped defaults. "
+        "See [[Server-Component-ctms-services]]."),
+    "LOG_INFO/kafka": ("Server-LOG_INFO-kafka",
+        "Embedded Kafka/ZooKeeper for Server-side services: broker/controller configs, "
+        "JAAS configs, and `kafka_data/log/` (largest file count in the Server archive)."),
+    "LOG_INFO/status": ("Server-LOG_INFO-status",
+        "Per-job status files named `<n>_<n>.<ts>_<n>` — presence/volume is the useful "
+        "signal at skeleton stage."),
+    "AG_TBL_CTM": ("Server-AG_TBL_CTM",
+        "Agent-related Server DB tables as CSV: `AGENT_DISCOVERY(_ACTIVE)`, `CMR_NODES`, "
+        "`CMS_AGPRM` — the Server-side registry of agents and node parameters."),
+    "HA_TBL_CTM": ("Server-HA_TBL_CTM",
+        "High-availability tables: `CMR_LIFE_CHECK_MESSAGES`, `CMS_FILE_SYNC`, "
+        "`CMS_HA_PARAMS`, `CMS_HA_SYSPRM`, `CMS_HA_TIMESTAMP` — primary/failover state."),
+    "TBL_INFO": ("Server-TBL_INFO",
+        "Database-side diagnostics: `ctmdbcheck.txt` ([[Server-Artifact-ctmdbcheck]]), "
+        "`ctmdbcount.txt`, `ctm_ora_readiness.txt` (Oracle readiness), `dbversion.txt`."),
+    "FNC_INFO": ("Server-FNC_INFO",
+        "Functional diagnostics run by the collector: `ctm_agstat.txt` (agent "
+        "availability — [[Server-Artifact-agent-availability]]), `ctmlog.txt`, "
+        "`ctmdbcount.txt`, `check_schema.txt`."),
+    "BMCINSTALL": ("Server-BMCINSTALL",
+        "Install/upgrade history: `CtmInstalledVersions.<n>.log` snapshots, per-product "
+        "install logs in `log/`, java reports, external java path files. Cross-reference "
+        "when symptoms began at an install/upgrade window."),
+    "MIG_INFO": ("Server-MIG_INFO",
+        "Migration working area (`logs/`, `temp/`) — empty in the sample; populated "
+        "during platform/DB migrations."),
+    "db": ("Server-db",
+        "Database diagnostics root. This sample is **Oracle**-backed — no PostgreSQL "
+        "section; see the subsections for Oracle client config and DBU outputs."),
+    "db/oracle": ("Server-db-oracle",
+        "Oracle client/network config: `tnsnames.ora`, `sqlnet.ora`, `ojdbc.properties`, "
+        "`oracle-nls-sort.csv`. **Note:** `db/oracle_check_req/` (Oracle requirements "
+        "check output) is covered by this note too (deliberate deviation)."),
+    "db/DBUtils": ("Server-db-DBUtils",
+        "Control-M database utility outputs: `DBUCheck`, `DBUStatus`, `DBUShow`, "
+        "`DBUVersion`, `DBUTransactions` — same format family as the EM-side "
+        "[[Artifact-DBUCheck]]."),
+    "db/DBUData": ("Server-db-DBUData",
+        "DBU working data and scheduled check logs (`dbu_show_privs_*`, mirror checks)."),
+    "OS": ("Server-OS",
+        "OS diagnostics for the Control-M/Server host. Same capture families as the EM "
+        "host — interpret via the EM-side notes: [[OS-Performance]], [[OS-Network]], "
+        "[[OS-Memory]], [[OS-Processes]], [[OS-Java]], [[OS-Hardware]], [[OS-StartUp]]. "
+        "Differences in this sample: `FileSystem.txt`/`KernelParameters.txt` at the OS "
+        "root, no separate `Disk/` folder."),
+    "report": ("Server-report",
+        "**HCU-generated Server analyses**: [[Server-Artifact-SYSPRM-csv]], "
+        "[[Server-Artifact-new_day-csv]], [[Server-Artifact-download-csv]], "
+        "[[Server-Artifact-jobs_count-csv]], [[Server-Artifact-CE-Heap]], "
+        "[[Server-Artifact-thread-pools]], [[Server-Artifact-db-performance-csvs]], "
+        "`java_memory.csv`, `disk-benchmark.txt`, `dns_report.txt`, and CMR order/request "
+        "status CSVs."),
+    "hcu_logs": ("Server-hcu_logs",
+        "The collector's own execution log for this Server run — the completeness gate. "
+        "Same format as the EM-side [[Artifact-hcu-collector-log]]; read it before "
+        "concluding anything from a missing file."),
+}
+
+SERVER_COMPONENTS = {
+    "Server-Component-CE": (
+        "Control-M/Server Engine (CE)",
+        "Java engine process. Heap reported by [[Server-Artifact-CE-Heap]]; internal "
+        "thread pools (RequestDispatcher etc., with their CONFIG.* sizing parameters) "
+        "reported by [[Server-Artifact-thread-pools]].",
+        ["Server-LOG_INFO-proclog", "Server-report"],
+        "Logs: `CE.*` proclogs (largest family, incl. `CE_periodic_pstack_snapshot`)."),
+    "Server-Component-CS": (
+        "CS process family",
+        "Main Control-M/Server process family (`CS<pid>*` proclogs). "
+        "> [UNVERIFIED — confirm against docs] exact role split vs CE.",
+        ["Server-LOG_INFO-proclog"], ""),
+    "Server-Component-CA": (
+        "Configuration Agent (CA)",
+        "Server-side configuration agent; `CA.<pid>` proclogs carry per-thread logs "
+        "(`_CO_`, `_CSE_`, `_CSU_`, `_CS_`, `_DBC_`, `_EX_`).",
+        ["Server-LOG_INFO-proclog"], ""),
+    "Server-Component-TR": (
+        "Tracker (TR)",
+        "Job tracking process family — second-largest proclog family in the sample. "
+        "> [UNVERIFIED — confirm against docs] tracks job execution state changes.",
+        ["Server-LOG_INFO-proclog"], ""),
+    "Server-Component-RT": (
+        "RT process",
+        "`RT*` proclog family. > [UNVERIFIED — confirm against docs] router/real-time "
+        "communication role.",
+        ["Server-LOG_INFO-proclog"], ""),
+    "Server-Component-WD": (
+        "Watchdog (WD)",
+        "`WD*` proclog family. > [UNVERIFIED — confirm against docs] monitors/restarts "
+        "Server processes.",
+        ["Server-LOG_INFO-proclog"], ""),
+    "Server-Component-NS": (
+        "NS (agent communication)",
+        "Agent-communication subsystem; per-agent thread pools reported in "
+        "[[Server-Artifact-thread-pools]] (`NsThreadPool`, `Ns_PrintAll`), working "
+        "captures `NS_*.txt` in [[Server-CNF_INFO-tmp_dir]]. "
+        "> [UNVERIFIED — confirm against docs] runs inside the CE JVM.",
+        ["Server-CNF_INFO-tmp_dir", "Server-report"], ""),
+    "Server-Component-Kafka-Server": (
+        "Kafka / ZooKeeper (Server side)",
+        "Embedded messaging for Server-side ctms services.",
+        ["Server-LOG_INFO-kafka", "Server-LOG_INFO-log"],
+        "Health/start/stop logs in [[Server-LOG_INFO-log]]; broker configs and logs in "
+        "[[Server-LOG_INFO-kafka]]."),
+    "Server-Component-ctms-services": (
+        "ctms microservices",
+        "Server-side microservices seen in the sample: `ctms-api-gateway`, `ctms-order`, "
+        "`ctms-job-info`, `ctms-app-updates`, `ctm-hybrid-communication-proxy` (plus "
+        "kafdrop tooling). Configs (and `custom/BootPropertiesUserOverride.yml`) in "
+        "[[Server-LOG_INFO-services]]. Split into per-service notes when enrichment "
+        "needs it.",
+        ["Server-LOG_INFO-services", "Server-LOG_INFO-log"], ""),
+}
+
+SERVER_ARTIFACTS = {
+    "Server-Artifact-SYSPRM-csv": (
+        "SYSPRM.csv",
+        "report/SYSPRM.csv",
+        "Single-row snapshot of Control-M/Server system parameters plus runtime state "
+        "(versions, New Day time `DAYTIME`, AJF/log retention settings, MAXJOBLOG/"
+        "MAXAJFREC/MAXTRY, SSL_ENBL, MIRRORDB, PRIMARY_MIRROR, CURRENT_STATE/"
+        "DESIRED_STATE). The Server-side equivalent of EM's PARAMS dump — read it first "
+        "for any Server tuning question.",
+        "Server-report"),
+    "Server-Artifact-new_day-csv": (
+        "new_day.csv",
+        "report/new_day.csv",
+        "New Day procedure timings per run: `TOTAL` plus phase breakdown "
+        "(`IOALOG_CLEAN`, `STATISTICS_CLEAN`, `AJF_CLEAN`, `SYSTEM_DAILY`). "
+        "> [UNVERIFIED — confirm against docs] units are milliseconds. Rising totals "
+        "or a dominant phase localize New Day slowness.",
+        "Server-report"),
+    "Server-Artifact-download-csv": (
+        "download.csv",
+        "report/download.csv",
+        "Per-download timings and volumes: `SEND_TIME`, `TOTAL_TIME`, `JOBS`, "
+        "`CONDITIONS`, `Q_RESOURCES`, `CTL_RESOURCES` — the Server-side view of the "
+        "net download that EM's Gateway consumes ([[Check-defaults_rsc]]).",
+        "Server-report"),
+    "Server-Artifact-jobs_count-csv": (
+        "jobs_count.csv",
+        "report/jobs_count.csv",
+        "Job counts by state over time (`TIME`, `STATE`, `COUNT`) — the quick view of "
+        "AJF size and state mix.",
+        "Server-report"),
+    "Server-Artifact-CE-Heap": (
+        "CE_Heap.txt",
+        "report/CE_Heap.txt",
+        "`ctmipc -DEST CE -MSGID JMX -DATA HEAP` output: max/committed/used heap of the "
+        "[[Server-Component-CE]] JVM. used≈max is the Server-side analogue of EM heap "
+        "exhaustion.",
+        "Server-report"),
+    "Server-Artifact-thread-pools": (
+        "Thread pool reports (CtmThreadPool / NsThreadPool / Ns_PrintAll)",
+        "report/{CtmThreadPool,NsThreadPool,Ns_PrintAll}.txt",
+        "`ctmipc ... CTL` outputs. `CtmThreadPool`: per-pool queue/threads/active/runs/"
+        "peak/max with the CONFIG.* parameter that sizes each pool (e.g. "
+        "`CTM_REQUEST_THREAD_POOL_SIZE`). `NsThreadPool`/`Ns_PrintAll`: per-agent "
+        "running/pending communication threads. peak==max with queueing suggests an "
+        "undersized pool.",
+        "Server-report"),
+    "Server-Artifact-db-performance-csvs": (
+        "DB performance CSVs",
+        "report/{primary_db_performance,mirror_db_performance,db_updates}.csv",
+        "Collector-run DB operation benchmarks against primary (and mirror, if "
+        "configured) plus update-rate stats — the Server-side analogue of EM's "
+        "[[Artifact-db-perf-sort-report]].",
+        "Server-report"),
+    "Server-Artifact-ctmdbcheck": (
+        "ctmdbcheck.txt",
+        "TBL_INFO/ctmdbcheck.txt",
+        "Control-M/Server database space/health check output; pair with "
+        "`ctm_ora_readiness.txt` and `dbversion.txt` in [[Server-TBL_INFO]].",
+        "Server-TBL_INFO"),
+    "Server-Artifact-installed-versions": (
+        "Installed versions history",
+        "CNF_INFO/versions/installed-versions.txt (+ BMCINSTALL/CtmInstalledVersions.<n>.log)",
+        "Complete PIM install/upgrade history: package, platform, package date, install "
+        "date, version, install type. First stop for 'what changed and when' — "
+        "correlate with [[Server-BMCINSTALL]] install logs.",
+        "Server-CNF_INFO-versions"),
+    "Server-Artifact-agent-availability": (
+        "Agent availability reports",
+        "FNC_INFO/ctm_agstat.txt (+ AG_TBL_CTM/AGENT_DISCOVERY*.csv)",
+        "`agent_list` health-check output plus the AGENT_DISCOVERY table dumps: which "
+        "agents the Server knows, and their availability state at collection time. "
+        "Start here for agent-unavailable symptoms before reading proclogs.",
+        "Server-FNC_INFO"),
+}
+
+AGENT_SECTION_INFO = {
+    "": ("Agent-Archive-Root",
+         "Top level of a Control-M/Agent `ctm_data_collector` archive. **Naming differs "
+         "from EM/Server**: `_data_<YYYYMMDD>_<HHMMSS>_<os>_<hostname>_<user>`. Sample "
+         "baseline: Agent 9.0.21.300 on Linux. No check_config results exist for Agent "
+         "archives in this sample."),
+    "AG_CNF": ("Agent-AG_CNF",
+        "Agent configuration: `data/` holds ~60 parameter/state `.dat` files "
+        "(`CONFIG.dat` — see [[Agent-Artifact-CONFIG-dat]] — plus `ag_ver.dat`, "
+        "`AG_PREREQ.dat`, `JAVACONF.dat`, application-plugin maps, SSL material, "
+        "`CFG_BACKUP/`, `remote_utils/`, `rhdetails/`), with `versions/` and "
+        "`Agent_dependencies.txt` alongside. **Note:** `AG_CNF/data/` is covered by "
+        "this note (deliberate deviation from one-note-per-directory)."),
+    "AG_LOG": ("Agent-AG_LOG",
+        "Agent log root: `locks/` (lock and semaphore files), `pid/`/`procid/`, "
+        "`onstmt/`, `capdef/`, `runtime/`, `temp/`, plus the two big subsections below."),
+    "AG_LOG/proclog": ("Agent-AG_LOG-proclog",
+        "Agent process logs by prefix: `AG_`, `AS_` (largest family), `AT_`, `ATW`, "
+        "`AC_`, `WK_`, `WD_`, `ctmcfg_`, `ctmjavareq_`, `uploader_`, `updstd_`, "
+        "start/shutdown logs — plus `Metrics/` and `MemoryDump/`."),
+    "AG_LOG/dailylog": ("Agent-AG_LOG-dailylog",
+        "`daily_ctmag_<date>.log` — one file per day of agent activity; the first place "
+        "to establish a timeline for agent-side symptoms."),
+    "AG_UTIL": ("Agent-AG_UTIL",
+        "Utility diagnostic outputs: [[Agent-Artifact-ag_diag_comm]] (`ag_diag_comm.txt`), "
+        "`ctmdllver.txt`, `java_version.txt`, `permission_check.txt`, `shagent.txt`."),
+    "report": ("Agent-report",
+        "HCU-generated Agent analyses: [[Agent-Artifact-env-report]], "
+        "[[Agent-Artifact-io_benchmark]], `daily_report.dat`, and the `measure/` "
+        "subsection below."),
+    "report/measure": ("Agent-report-measure",
+        "Per-process resource measurements: daily CSVs per process family "
+        "(`<date>_{AG,AGJ,AS,AT,ATW,DS,UPLD}.csv`), `AGENTAPP_<date>.csv`, and "
+        "per-PID snapshots. See [[Agent-Artifact-measure-csvs]]."),
+    "hcu_logs": ("Agent-hcu_logs",
+        "Collector execution log for this Agent run (completeness gate — same format as "
+        "[[Artifact-hcu-collector-log]]) plus `data/` with per-plugin XML captures "
+        "(`CNF_CM*.xml` for each installed application plugin, `BSS_AG.xml`, "
+        "`CNF_AG.xml`)."),
+    "OS": ("Agent-OS",
+        "OS diagnostics for the Agent host — same capture families as the EM host "
+        "(interpret via [[OS-Performance]], [[OS-Network]], [[OS-Memory]], "
+        "[[OS-Processes]], [[OS-Java]], [[OS-Hardware]], [[OS-StartUp]]), plus a "
+        "`SystemLog/` extra (`SystemLog.txt`, `SystemWarnings.txt`) not present in the "
+        "EM sample."),
+}
+
+AGENT_COMPONENTS = {
+    "Agent-Component-AG": (
+        "AG process",
+        "Agent listener/communication process. > [UNVERIFIED — confirm against docs] "
+        "receives Server requests.",
+        ["Agent-AG_LOG-proclog", "Agent-report-measure"],
+        "Logs: `AG_*` proclogs; resource usage in `<date>_AG.csv`."),
+    "Agent-Component-AS": (
+        "AS process",
+        "Largest proclog family in the sample. > [UNVERIFIED — confirm against docs] "
+        "job submission/execution role.",
+        ["Agent-AG_LOG-proclog", "Agent-report-measure"],
+        "Logs: `AS_*` proclogs; resource usage in `<date>_AS.csv`."),
+    "Agent-Component-AT": (
+        "AT process (tracker)",
+        "> [UNVERIFIED — confirm against docs] tracks submitted job state and reports "
+        "back to the Server.",
+        ["Agent-AG_LOG-proclog", "Agent-report-measure"],
+        "Logs: `AT_*` proclogs; resource usage in `<date>_AT.csv`."),
+    "Agent-Component-ATW": (
+        "ATW process",
+        "> [UNVERIFIED — confirm against docs] tracker worker.",
+        ["Agent-AG_LOG-proclog", "Agent-report-measure"],
+        "Logs: `ATW*` proclogs; resource usage in `<date>_ATW.csv`."),
+    "Agent-Component-AGJ": (
+        "AGJ process",
+        "Java-side agent process; own measure CSVs incl. per-PID snapshots. "
+        "> [UNVERIFIED — confirm against docs] exact role.",
+        ["Agent-AG_LOG-proclog", "Agent-report-measure"],
+        "Resource usage in `<date>_AGJ.csv` and `AGJ_<n>_<ts>.csv`. Other observed "
+        "process families (UPLD, DS, WD, AC, WK) are described in "
+        "[[Agent-AG_LOG-proclog]] until they warrant their own notes."),
+}
+
+AGENT_ARTIFACTS = {
+    "Agent-Artifact-ag_diag_comm": (
+        "ag_diag_comm.txt",
+        "AG_UTIL/ag_diag_comm.txt",
+        "Control-M/Agent Communication Diagnostic Report: agent user/directory/platform, "
+        "authorized Server hosts, ports, SSL state, version/fixpack. The single most "
+        "information-dense file for agent↔server connectivity issues — parse it before "
+        "any proclog.",
+        "Agent-AG_UTIL"),
+    "Agent-Artifact-CONFIG-dat": (
+        "CONFIG.dat",
+        "AG_CNF/data/CONFIG.dat",
+        "Agent parameter file — the agent-side source of truth for communication, "
+        "tracker, and job-handling settings.",
+        "Agent-AG_CNF"),
+    "Agent-Artifact-measure-csvs": (
+        "Process measure CSVs",
+        "report/measure/<date>_{AG,AGJ,AS,AT,ATW,DS,UPLD}.csv (+ AGENTAPP_<date>.csv)",
+        "Daily per-process resource usage series for each agent process family — the "
+        "agent-side analogue of EM's [[Artifact-metric-csvs]]; sustained growth is the "
+        "early-warning signal.",
+        "Agent-report-measure"),
+    "Agent-Artifact-io_benchmark": (
+        "io_benchmark.txt",
+        "report/io_benchmark.txt",
+        "Collector-run I/O benchmark of the agent host filesystem — the agent-side "
+        "analogue of [[Artifact-disk-benchmark]].",
+        "Agent-report"),
+    "Agent-Artifact-env-report": (
+        "env-report.txt",
+        "report/env-report.txt (+ report/daily_report.dat)",
+        "Environment summary generated by the collector for the agent host.",
+        "Agent-report"),
+}
 
 MODELS = {
     "EM": {
@@ -559,7 +903,7 @@ def build_section_notes(v: Vault, src: Path, product: str):
             seen = set()
             for f in sorted(p.rglob("*")):
                 if f.is_file():
-                    n = normalize_filename(str(f.relative_to(p)))
+                    n = normalize_filename(str(f.relative_to(p)).replace("\\", "/"))
                     if n not in seen:
                         seen.add(n)
                         inventory.append(n)
