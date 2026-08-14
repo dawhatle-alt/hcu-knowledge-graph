@@ -10,10 +10,19 @@ Deterministic skeleton builder:
   - Strips customer-identifying hostnames/domains
 
 Usage:
-    python3 build_hcu_vault.py <extracted_hcu_root> <output_vault_dir>
+    python3 build_hcu_vault.py <extracted_hcu_root> <output_vault_dir> [product]
 
-Re-runnable against future HCU archives (EM or Server). Enrichment (findings,
-root causes, resolutions) is done afterwards, note by note, on top of this skeleton.
+`product` is one of EM (default), Server, Agent. EM note names keep no prefix
+(backward compatible with the original EM-only vault); Server/Agent notes are
+prefixed `Server-` / `Agent-`. All notes carry `product:` frontmatter.
+
+Non-EM runs generate ONLY that product's section/check/artifact/component notes
+plus a `<Product>-MOC` index note — they never touch templates, the seed chain,
+About-This-Vault, the playbooks, or another product's notes. The master
+`HCU-MOC` is maintained by hand once the vault is multi-product.
+
+Re-runnable against future HCU archives. Enrichment (findings, root causes,
+resolutions) is done afterwards, note by note, on top of this skeleton.
 """
 
 import json
@@ -25,14 +34,40 @@ from collections import defaultdict
 
 # ---------------------------------------------------------------- sanitization
 
-HOSTNAME_RE = re.compile(r"[A-Za-z][\w-]*\.[\w.-]+\.(?:local|com|net|org|corp|internal)")
+HOSTNAME_RE = re.compile(
+    r"[A-Za-z][\w-]*\.[\w.-]+\.(?:local|com|net|org|corp|internal|edu|gov|mil|io|co|us|uk|de)")
 SIMPLE_HOST_RE = re.compile(r"\blrdcc[\w.]*\b", re.IGNORECASE)  # sample-specific
 PID_TS_RE = re.compile(r"\d{6,}")
+
+# Tokens scrubbed in addition to the generic patterns; populated per run from
+# the archive folder name (hostname + account fields) by register_archive_tokens().
+EXTRA_TOKEN_RES = []
+
+ARCHIVE_NAME_RE = re.compile(
+    r"^(?:ctm_data_collector|_data)_\d{8}_\d{6}_[A-Za-z]+_(?P<host>[\w.-]+)_(?P<user>[\w-]+)$")
+
+
+def register_archive_tokens(archive_dirname: str):
+    """Derive customer-identifying tokens (hostname, run account) from the
+    archive folder name and add them to the scrub list."""
+    m = ARCHIVE_NAME_RE.match(archive_dirname)
+    if not m:
+        return
+    host, user = m.group("host"), m.group("user")
+    # hostname (and its short form) -> <hostname>
+    EXTRA_TOKEN_RES.append((re.compile(re.escape(host), re.IGNORECASE), "<hostname>"))
+    short = host.split(".")[0]
+    if short and short != host:
+        EXTRA_TOKEN_RES.append((re.compile(re.escape(short), re.IGNORECASE), "<hostname>"))
+    if user:
+        EXTRA_TOKEN_RES.append((re.compile(re.escape(user), re.IGNORECASE), "<user>"))
 
 
 def sanitize(text: str) -> str:
     text = HOSTNAME_RE.sub("<hostname>", text)
     text = SIMPLE_HOST_RE.sub("<hostname>", text)
+    for rx, repl in EXTRA_TOKEN_RES:
+        text = rx.sub(repl, text)
     return text
 
 
@@ -400,6 +435,39 @@ ARTIFACTS = {
         "hcu_logs"),
 }
 
+# ------------------------------------------------------- product model registry
+# Server/Agent curated dicts are filled in after the section-list review.
+# Non-EM note names inside these dicts are written ALREADY PREFIXED
+# ("Server-LOG_INFO", "Agent-Artifact-ag_diag_comm", ...) — the `prefix` entry
+# is applied only to generated names (Check-* notes and the <Product>-MOC).
+
+SERVER_SECTION_INFO, SERVER_COMPONENTS, SERVER_ARTIFACTS = {}, {}, {}
+AGENT_SECTION_INFO, AGENT_COMPONENTS, AGENT_ARTIFACTS = {}, {}, {}
+
+MODELS = {
+    "EM": {
+        "sections": SECTION_INFO, "components": COMPONENTS, "artifacts": ARTIFACTS,
+        "prefix": "", "root_note": "HCU-Archive-Root",
+        "check_section_note": "EM-check_config_results",
+        "check_report_glob": "EM/check_config_results/check_config_report_*.json",
+    },
+    "Server": {
+        "sections": SERVER_SECTION_INFO, "components": SERVER_COMPONENTS,
+        "artifacts": SERVER_ARTIFACTS,
+        "prefix": "Server-", "root_note": "Server-Archive-Root",
+        "check_section_note": None,
+        # no check_config in the Server sample archive; set when a sample has one
+        "check_report_glob": None,
+    },
+    "Agent": {
+        "sections": AGENT_SECTION_INFO, "components": AGENT_COMPONENTS,
+        "artifacts": AGENT_ARTIFACTS,
+        "prefix": "Agent-", "root_note": "Agent-Archive-Root",
+        "check_section_note": None,
+        "check_report_glob": None,
+    },
+}
+
 SEED_CHAIN = {
     "Finding-aisrv-web-connection-refused": (
         "Finding — aisrv-web TTransportException / Connection refused",
@@ -481,8 +549,10 @@ Exact strings / patterns to search for.
 
 # ---------------------------------------------------------------- builders
 
-def build_section_notes(v: Vault, src: Path):
-    for rel, (note_name, desc) in SECTION_INFO.items():
+def build_section_notes(v: Vault, src: Path, product: str):
+    model = MODELS[product]
+    sections = model["sections"]
+    for rel, (note_name, desc) in sections.items():
         p = src / rel if rel else src
         inventory = []
         if p.is_dir():
@@ -494,10 +564,12 @@ def build_section_notes(v: Vault, src: Path):
                         seen.add(n)
                         inventory.append(n)
         # log families for EM/Log come from filelist since bodies were excluded
-        parent = "[[HCU-MOC]]" if rel == "" else f"[[{SECTION_INFO.get(str(Path(rel).parent) if str(Path(rel).parent) != '.' else '', SECTION_INFO[''])[0]}]]"
-        related_checks = [f"[[{c}]]" for c in CHECK_NOTE_NAMES] if rel == "EM/check_config_results" else []
-        body = fm(type="archive-section", section=(rel or "/"), status="skeleton",
-                  tags=["hcu", "section"]) 
+        moc = f"[[{product}-MOC]]" if product != "EM" else "[[HCU-MOC]]"
+        parent = moc if rel == "" else f"[[{sections.get(str(Path(rel).parent) if str(Path(rel).parent) != '.' else '', sections[''])[0]}]]"
+        related_checks = [f"[[{c}]]" for c in CHECK_NOTE_NAMES] if (
+            model["check_section_note"] and note_name == model["check_section_note"]) else []
+        body = fm(type="archive-section", section=(rel or "/"), product=product,
+                  status="skeleton", tags=["hcu", "section"])
         body += f"# {note_name}\n\n{desc}\n\n**Parent:** {parent}\n"
         if related_checks:
             body += "\n**Checks:** " + " · ".join(related_checks) + "\n"
@@ -513,7 +585,9 @@ def build_section_notes(v: Vault, src: Path):
 
 CHECK_NOTE_NAMES = []
 
-def build_check_notes(v: Vault, report: dict):
+def build_check_notes(v: Vault, report: dict, product: str):
+    prefix = MODELS[product]["prefix"]
+    section_note = MODELS[product]["check_section_note"]
     size = report.get("production_size", {})
     ctx = (f"Sample environment: version {report.get('version')}, production size "
            f"**{size.get('size')}** ({size.get('jobs'):,} jobs / "
@@ -528,7 +602,7 @@ def build_check_notes(v: Vault, report: dict):
     }
     for r in report["results"]:
         name = r["check_name"]
-        note = f"Check-{name}"
+        note = f"{prefix}Check-{name}"
         CHECK_NOTE_NAMES.append(note)
         comps = set()
         rows = []
@@ -543,10 +617,10 @@ def build_check_notes(v: Vault, report: dict):
         loc = sanitize(str(r.get("location", "")))
         override = sanitize(str(r.get("user_override_file", "")))
         comp_links = " · ".join(f"[[{c}]]" if c.startswith("Component-") else c for c in sorted(comps)) or "—"
-        body = fm(type="check", check_name=name, product=report.get("product", "EM"),
+        body = fm(type="check", check_name=name, product=product,
                   status="skeleton", tags=["hcu", "check"])
         body += f"# Check — {name}\n\n"
-        body += f"**Section:** [[EM-check_config_results]] · **Report:** [[Artifact-check_config_report-json]]\n\n"
+        body += f"**Section:** [[{section_note}]] · **Report:** [[Artifact-check_config_report-json]]\n\n"
         if loc:
             body += f"**Config source:** `{loc}`\n\n"
         if override:
@@ -561,9 +635,10 @@ def build_check_notes(v: Vault, report: dict):
         v.add("20-Checks", note, body)
 
 
-def build_component_notes(v: Vault):
-    for note, (title, desc, sections, extra) in COMPONENTS.items():
-        body = fm(type="component", status="skeleton", tags=["hcu", "component"])
+def build_component_notes(v: Vault, product: str):
+    for note, (title, desc, sections, extra) in MODELS[product]["components"].items():
+        body = fm(type="component", product=product, status="skeleton",
+                  tags=["hcu", "component"])
         body += f"# {title}\n\n{desc}\n\n"
         body += "**Archive sections:** " + " · ".join(f"[[{s}]]" for s in sections) + "\n"
         if extra:
@@ -572,9 +647,10 @@ def build_component_notes(v: Vault):
         v.add("30-Components", note, body)
 
 
-def build_artifact_notes(v: Vault):
-    for note, (title, path, desc, section) in ARTIFACTS.items():
-        body = fm(type="artifact", status="skeleton", tags=["hcu", "artifact"])
+def build_artifact_notes(v: Vault, product: str):
+    for note, (title, path, desc, section) in MODELS[product]["artifacts"].items():
+        body = fm(type="artifact", product=product, status="skeleton",
+                  tags=["hcu", "artifact"])
         body += f"# {title}\n\n**Archive path:** `{sanitize(path)}` · **Section:** [[{section}]]\n\n{desc}\n"
         v.add("25-Artifacts", note, body)
 
@@ -583,7 +659,7 @@ def build_seed_chain(v: Vault):
     folders = {"finding": "40-Findings", "root-cause": "50-Root-Causes",
                "resolution": "60-Resolutions"}
     for note, (title, kind, body_text, comps) in SEED_CHAIN.items():
-        body = fm(type=kind, status="seeded", tags=["hcu", kind])
+        body = fm(type=kind, product="EM", status="seeded", tags=["hcu", kind])
         body += f"# {title}\n\n{body_text}\n\n"
         body += "**Components:** " + " · ".join(f"[[{c}]]" for c in comps) + "\n"
         v.add(folders[kind], note, body)
@@ -594,16 +670,19 @@ def build_templates(v: Vault):
         v.add("90-Templates", name, fm(type="template", template_for=kind) + text)
 
 
-def build_index(v: Vault, report: dict):
-    checks = "\n".join(f"- [[{c}]]" for c in CHECK_NOTE_NAMES)
-    sections = "\n".join(f"- [[{n}]]" for _, (n, _) in sorted(SECTION_INFO.items()) if n != "HCU-Archive-Root")
-    comps = "\n".join(f"- [[{c}]]" for c in COMPONENTS)
-    arts = "\n".join(f"- [[{a}]]" for a in ARTIFACTS)
-    moc = fm(type="moc", status="skeleton", tags=["hcu", "moc"])
-    moc += f"""# HCU Knowledge Graph — Map of Content
+def build_index(v: Vault, report: dict, product: str):
+    model = MODELS[product]
+    checks = "\n".join(f"- [[{c}]]" for c in CHECK_NOTE_NAMES) or "- _(no check_config report in this product's sample archive)_"
+    sections = "\n".join(f"- [[{n}]]" for _, (n, _) in sorted(model["sections"].items()) if n != model["root_note"])
+    comps = "\n".join(f"- [[{c}]]" for c in model["components"])
+    arts = "\n".join(f"- [[{a}]]" for a in model["artifacts"])
+    version = report.get("version") if report else "(unknown)"
+    moc = fm(type="moc", product=product, status="skeleton", tags=["hcu", "moc"])
+    if product == "EM":
+        moc += f"""# EM — Map of Content
 
-Source of truth for interpreting **Control-M Health Check Utility (`ctm_data_collector`)**
-archives. Built from an EM {report.get('version')} sample; extend with Server-side samples.
+Everything for interpreting the **EM side** of an HCU archive. Built from an EM
+{version} sample. Master index: [[HCU-MOC]].
 
 **Agent entry protocol:**
 1. Read [[About-This-Vault]] for schema and retrieval rules.
@@ -631,7 +710,32 @@ archives. Built from an EM {report.get('version')} sample; extend with Server-si
 - [[Finding-aisrv-web-connection-refused]] → [[RootCause-missing-lsof-prerequisite]] → [[Resolution-install-lsof-restart-ai]]
 - _(enrichment pending — add chains as cases are worked)_
 """
-    v.add("00-Index", "HCU-MOC", moc)
+    else:
+        moc += f"""# {product} — Map of Content
+
+Everything for interpreting the **Control-M/{product} side** of an HCU archive.
+Master index: [[HCU-MOC]] · Schema: [[About-This-Vault]].
+
+## Health checks (check_config)
+{checks}
+
+## Archive sections
+- [[{model["root_note"]}]]
+{sections}
+
+## Components
+{comps}
+
+## Key artifacts
+{arts}
+
+## Diagnostic chains
+- _(enrichment pending — add chains as cases are worked)_
+"""
+    v.add("00-Index", f"{product}-MOC", moc)
+
+    if product != "EM":
+        return  # playbooks/About are vault-wide, maintained with the EM build
 
     playbooks = fm(type="moc", status="skeleton", tags=["hcu", "moc"])
     playbooks += """# Diagnostic Playbooks — MOC
@@ -674,9 +778,14 @@ Source of truth for AI agents (and humans) interpreting Control-M HCU
 ## Conventions
 - Wikilinks are the graph. Findings link → root causes link → resolutions; checks and
   artifacts link to components and sections.
+- **Product prefixing:** every note carries `product:` frontmatter (EM / Server /
+  Agent). EM note names keep **no prefix** (the vault started EM-only — backward
+  compatibility). Server and Agent notes are name-prefixed `Server-` / `Agent-`
+  (e.g. `Server-LOG_INFO`, `Agent-Check-...`). Index entry points:
+  [[HCU-MOC]] (master) → [[EM-MOC]] · [[Server-MOC]] · [[Agent-MOC]].
 - `status: skeleton` = structure generated deterministically from a real archive,
   enrichment pending. `status: seeded` / `status: enriched` after review.
-- All customer identifiers are sanitized (`<hostname>`, `<n>`, `<ts>`).
+- All customer identifiers are sanitized (`<hostname>`, `<user>`, `<n>`, `<ts>`).
 - Thresholds in check notes are **size-dependent** — never quote a minimum without the
   `production_size` context.
 
@@ -693,22 +802,37 @@ Source of truth for AI agents (and humans) interpreting Control-M HCU
 def main():
     src = Path(sys.argv[1]).resolve()
     out = Path(sys.argv[2]).resolve()
-    reports = sorted((src / "EM/check_config_results").glob("check_config_report_*.json"))
-    report = json.loads(reports[-1].read_text())
+    product = sys.argv[3] if len(sys.argv) > 3 else "EM"
+    if product not in MODELS:
+        sys.exit(f"Unknown product {product!r}; expected one of {sorted(MODELS)}")
+    register_archive_tokens(src.name)
+    model = MODELS[product]
+
+    report = None
+    if model["check_report_glob"]:
+        reports = sorted(src.glob(model["check_report_glob"]))
+        if reports:
+            report = json.loads(reports[-1].read_text())
+    if product == "EM" and report is None:
+        sys.exit("No check_config report found — refusing to build EM skeleton without it")
+
     v = Vault(out)
-    build_check_notes(v, report)          # populates CHECK_NOTE_NAMES first
-    build_section_notes(v, src)
-    build_component_notes(v)
-    build_artifact_notes(v)
-    build_seed_chain(v)
-    build_templates(v)
-    build_index(v, report)
+    CHECK_NOTE_NAMES.clear()
+    if report:
+        build_check_notes(v, report, product)   # populates CHECK_NOTE_NAMES first
+    build_section_notes(v, src, product)
+    build_component_notes(v, product)
+    build_artifact_notes(v, product)
+    if product == "EM":
+        build_seed_chain(v)
+        build_templates(v)
+    build_index(v, report, product)
     v.write()
     defined, linked = v.link_report()
     dangling = sorted(x for x in linked if x not in defined)
     orphans = sorted(x for x in defined if x not in linked and not x.startswith("tpl-"))
-    print(f"Notes written: {len(v.notes)}")
-    print(f"Dangling links (targets not yet created): {dangling or 'none'}")
+    print(f"Product: {product}; notes written: {len(v.notes)}")
+    print(f"Dangling links (targets outside this run or not yet created): {dangling or 'none'}")
     print(f"Orphan notes (nothing links to them): {orphans or 'none'}")
 
 
